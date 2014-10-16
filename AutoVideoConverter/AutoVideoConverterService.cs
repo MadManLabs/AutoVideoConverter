@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Diagnostics;
+﻿using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
-using System.Linq;
 using System.ServiceProcess;
-using System.Text;
-using System.Threading.Tasks;
+
 
 namespace AutoVideoConverter
 {
@@ -18,19 +13,57 @@ namespace AutoVideoConverter
             InitializeComponent();
         }
 
-        protected override void OnStart(string[] args)
+        private static void InitializeFileSystemWatcher()
         {
-            FileSystemWatcher fsw  = new FileSystemWatcher()
+            //Set up new FileSystemWatcher watching for files in path defined in AppSettings[WatchingPath]
+            var fsw = new FileSystemWatcher()
             {
-                EnableRaisingEvents = true
+                EnableRaisingEvents = true,
+                IncludeSubdirectories = true,
+                Path = ConfigurationSettings.AppSettings["WatchingPath"],
+                InternalBufferSize = 64000
+
             };
-            
-            
+
+            fsw.Created += OnChange;
 
         }
+
+        private static Queue<string> ProcessQueue = new Queue<string>();
+
+        private static bool ProgramIsBusy;
+
+        private static void ConvertVideoFromQueue(string inputPath)
+        {
+            //Pick up file paths of files that are created in WatchingPath directory then pass them into converter.
+            var fileConverter = new NReco.VideoConverter.FFMpegConverter();
+            fileConverter.ConvertMedia(inputPath, ConfigurationSettings.AppSettings["OutputPath"], "mp4");
+            
+            ProgramIsBusy = false;
+        }
+        private static void OnChange(object sender, FileSystemEventArgs e)
+        {
+            //
+           ProcessQueue.Enqueue(e.FullPath);
+            while (ProgramIsBusy == false)
+            {
+                var inputPath = ProcessQueue.Peek();
+                ConvertVideoFromQueue(inputPath);
+                ProgramIsBusy = true;
+            }
+        }
+
+        protected override void OnStart(string[] args)
+        {
+           InitializeFileSystemWatcher();
+        }
+
+       
 
         protected override void OnStop()
         {
+
         }
+
     }
 }
